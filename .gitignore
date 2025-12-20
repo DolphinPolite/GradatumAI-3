@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+ENV/
+build/
+dist/
+sdist/
+eggs/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# C extensions
+*.so
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Pytest
+.pytest_cache/
+
+# Cache
+.cache/
+
+# Models (commented out - remove the leading # if you prefer to ignore model weights)
+# models/*.pth

@@ -1,0 +1,250 @@
+# ============================================================================
+# Basketball Ball Tracker - Configuration File
+# ============================================================================
+# Purpose: Central configuration for all tracker parameters
+# ML Pipeline Note: Adjust these parameters based on your video resolution
+#                   and court setup without modifying the code
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# TRACKER CORE SETTINGS
+# ----------------------------------------------------------------------------
+tracker:
+  # Number of frames to track before re-detection
+  max_track_frames: 5
+  
+  # Padding around ball bbox for cropped detection (pixels)
+  ball_padding: 30
+  
+  # IoU padding for player-ball assignment (pixels)
+  iou_ball_padding: 30
+  
+  # Tracker types to use (in priority order)
+  # Options: CSRT (accurate), KCF (fast), MOSSE (very fast)
+  tracker_types:
+    - "KCF"      # Primary: Fast for basketball
+    - "CSRT"     # Backup: More accurate
+    - "MOSSE"    # Emergency: Very fast fallback
+
+# ----------------------------------------------------------------------------
+# DETECTION SETTINGS
+# ----------------------------------------------------------------------------
+detection:
+  # Template matching threshold (0-1, lower = more detections)
+  # Basketball: 0.75-0.85 recommended (orange ball has variations)
+  template_threshold: 0.80
+  
+  # Adaptive threshold adjustment
+  adaptive_threshold:
+    enabled: true
+    min_threshold: 0.70
+    max_threshold: 0.90
+    
+  # Circle detection parameters (Hough Circles)
+  circle_detection:
+    # Basketball appears 8-20 pixels radius in typical HD video
+    radii_ranges:
+      - [8, 15]   # Close to camera
+      - [5, 12]   # Medium distance
+      - [10, 18]  # Far from camera
+    
+    # Hough transform parameters
+    dp: 1
+    min_dist: 20
+    param1: 50
+    param2: 25
+  
+  # HSV color filtering for orange basketball
+  color_filter:
+    enabled: true
+    # Orange ball HSV range
+    hsv_lower: [5, 100, 100]    # [H, S, V]
+    hsv_upper: [25, 255, 255]
+    
+    # Minimum orange pixel ratio in candidate region
+    min_orange_ratio: 0.3
+
+# ----------------------------------------------------------------------------
+# VALIDATION LAYER
+# ----------------------------------------------------------------------------
+validation:
+  # Bounding box constraints (pixels)
+  min_bbox_size: 8
+  max_bbox_size: 120
+  
+  # Motion constraints (pixels/frame)
+  max_position_jump: 200        # Basketball can move fast
+  max_velocity: 80.0            # ~30 m/s real speed
+  max_acceleration: 15.0        # For sudden direction changes
+  
+  # Frame validation
+  min_frame_width: 320
+  min_frame_height: 240
+  
+  # Homography validation
+  check_homography: true
+  max_homography_error: 10.0
+
+# ----------------------------------------------------------------------------
+# TRACKER MANAGER
+# ----------------------------------------------------------------------------
+tracker_manager:
+  # Strategy: "primary_backup" or "voting"
+  # primary_backup: Use primary, switch on failure
+  # voting: Run all trackers, use consensus
+  strategy: "primary_backup"
+  
+  # Frames to wait before retrying failed tracker
+  fallback_timeout: 10
+  
+  # Reset to primary tracker every N frames
+  reset_interval: 50
+  
+  # Confidence threshold for tracker update (0-1)
+  min_tracker_confidence: 0.5
+  
+  # Voting system settings (if strategy = "voting")
+  voting:
+    min_agreement: 2           # Min trackers that must agree
+    max_bbox_distance: 30      # Max pixel distance for consensus
+
+# ----------------------------------------------------------------------------
+# MOTION PREDICTOR (Kalman Filter)
+# ----------------------------------------------------------------------------
+motion_predictor:
+  enabled: true
+  
+  # Trajectory buffer size (frames)
+  buffer_size: 30
+  
+  # Maximum frames to predict during occlusion
+  max_occlusion_frames: 8
+  
+  # Frame threshold for linear interpolation (short occlusions)
+  interpolation_threshold: 3
+  
+  # Kalman filter tuning
+  kalman:
+    process_noise: 0.01        # Q: Model uncertainty
+    measurement_noise: 0.1     # R: Measurement uncertainty
+    
+  # Basketball bounce detection
+  bounce_detection:
+    enabled: true
+    
+    # Vertical velocity threshold for bounce (pixels/frame)
+    # Negative = downward, positive = upward
+    min_velocity_change: 20.0
+    
+    # Minimum frames between bounces
+    min_bounce_interval: 3
+    
+    # Y-axis acceleration threshold
+    min_acceleration: 5.0
+    
+    # Physics validation
+    gravity_constant: 0.5      # Approximate pixel/frame²
+    max_bounce_height_ratio: 0.7  # Energy loss per bounce
+
+# ----------------------------------------------------------------------------
+# DETECTION ENHANCER
+# ----------------------------------------------------------------------------
+detection_enhancer:
+  # Multi-scale detection
+  multi_scale_enabled: true
+  
+  # Size consistency check
+  size_consistency:
+    enabled: true
+    max_size_change_ratio: 0.6  # 60% max change between frames
+  
+  # Edge region filtering (reduce false positives)
+  edge_filtering:
+    enabled: true
+    margin_pixels: 50           # Ignore detections near edges
+  
+  # Confidence scoring weights
+  confidence_weights:
+    template_match: 0.4
+    color_match: 0.3
+    size_consistency: 0.2
+    motion_consistency: 0.1
+
+# ----------------------------------------------------------------------------
+# LOGGING & METRICS
+# ----------------------------------------------------------------------------
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Save logs to file
+  save_to_file: true
+  log_directory: "logs/ball_tracking"
+  
+  # Log metrics for ML pipeline
+  log_metrics: true
+  
+  # Save ball trajectory
+  save_trajectory: true
+  trajectory_format: "json"     # json, csv, or numpy
+  
+  # Visualization settings
+  visualization:
+    draw_prediction: true       # Draw predicted position
+    draw_trajectory: true       # Draw past trajectory
+    trajectory_length: 30       # Frames to show
+    draw_confidence: true       # Show detection confidence
+
+# ----------------------------------------------------------------------------
+# ML PIPELINE INTEGRATION
+# ----------------------------------------------------------------------------
+ml_pipeline:
+  # Output format for downstream ML models
+  output_format: "structured"   # structured, raw, or minimal
+  
+  # Export additional features
+  export_features:
+    velocity: true
+    acceleration: true
+    bounce_events: true
+    confidence_scores: true
+    tracker_state: true
+  
+  # Frame sampling (if needed)
+  frame_sampling:
+    enabled: false
+    sample_rate: 1              # Process every Nth frame
+  
+  # Batch processing
+  batch_size: 32                # For batch predictions
+  
+  # Coordinate normalization
+  normalize_coordinates: false  # Set true for ML input
+  normalization_range: [0, 1]   # Output range
+
+# ----------------------------------------------------------------------------
+# PERFORMANCE TUNING
+# ----------------------------------------------------------------------------
+performance:
+  # Use GPU acceleration (if available)
+  use_gpu: false
+  
+  # Thread pool size for parallel processing
+  num_threads: 2
+  
+  # Memory management
+  max_buffer_size_mb: 100
+  
+  # Frame preprocessing
+  resize_for_detection: false
+  detection_scale: 1.0          # Scale factor for detection
+
+# ============================================================================
+# NOTES FOR ML ENGINEERS:
+# ============================================================================
+# 1. Adjust 'max_position_jump' based on your FPS and court size
+# 2. Enable 'bounce_detection' for dribbling analysis
+# 3. Set 'normalize_coordinates: true' if feeding to neural networks
+# 4. Use 'trajectory_format: numpy' for fast array operations
+# 5. Tune 'template_threshold' on validation set (0.75-0.85 range)
+# ============================================================================
