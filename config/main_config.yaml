@@ -1,0 +1,10 @@
+preprocessing:
+  topcut_offset: 10
+
+paths:
+  video_primary: "resources/videos/sample.mp4"
+  
+models:
+  # Path to a saved jersey recognition model (optional).
+  # Example: models/jersey_resnet18_cpu.pth
+  jersey_model_path: "models/jersey_resnet18_cpu.pth"

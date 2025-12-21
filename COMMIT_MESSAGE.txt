@@ -1,0 +1,8 @@
+Initial commit: repository prepared by automation
+
+- Centralized configuration into `config/main_config.yaml`
+- Added Kalman filter and dynamic IoU
+- Added jersey recognition model + dummy model in `models/`
+- Tests: pytest configured; basic tests under `tests/` pass
+
+Adjust this message as needed before running `scripts/prepare_git.ps1`.
