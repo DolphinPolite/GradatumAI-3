@@ -2,7 +2,6 @@
 
 [![Status](https://img.shields.io/badge/Status-Complete-brightgreen)](https://github.com/yourusername/GradatumAI)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🏀 Sistem Açıklaması
 
@@ -373,7 +372,7 @@ pytest tests/ --cov=Modules --cov-report=html
 - **GPU:** CUDA desteği opsiyonel (Detectron2 için)
 - **İşlemci:** Multi-core önerilir
 
-## 📦 Bağımlılıklar
+## 📦 Gerekenler
 
 ```
 opencv-python>=4.5.0
@@ -483,9 +482,6 @@ avg_distance = np.mean([p[2] for p in analyzer.pairs])
 print(f"Ort. oyuncu mesafesi: {avg_distance:.2f}m")
 ```
 
-## 📝 Lisans
-
-MIT License - Detaylı bilgi için [LICENSE](LICENSE) dosyasına bakınız.
 
 ## 👨‍💻 Katkıda Bulun
 
@@ -519,5 +515,5 @@ MIT License - Detaylı bilgi için [LICENSE](LICENSE) dosyasına bakınız.
 ---
 
 **Status:** ✅ Production Ready  
-**Last Updated:** 16 Aralık 2024  
+**Last Updated:** 16 Aralık 2025  
 **Version:** 3.0 (Complete)
