@@ -1,10 +1,68 @@
 preprocessing:
   topcut_offset: 10
 
+video:
+  fps: 30
+  frame_skip: 1
+
 paths:
-  video_primary: "resources/videos/sample.mp4"
+  video_primary: "resources/VideoProject.mp4"
+  video_secondary: "resources/Short4Mosaicing.mp4"
   
 models:
-  # Path to a saved jersey recognition model (optional).
-  # Example: models/jersey_resnet18_cpu.pth
   jersey_model_path: "models/jersey_resnet18_cpu.pth"
+
+# Player detection (Detectron2)
+player_detection:
+  confidence_threshold: 0.5
+  nms_threshold: 0.4
+
+# Ball tracking
+ball_tracking:
+  min_ball_radius: 5
+  max_ball_radius: 50
+  ball_detection_threshold: 0.5
+
+# Speed and acceleration
+speed_acceleration:
+  pixel_to_meter: 0.1
+  smoothing_window: 3
+  velocity_threshold: 0.1
+
+# Player distance analysis
+player_distance:
+  pixel_to_meter: 0.1
+  proximity_threshold: 3.0
+  min_team_separation: 2.0
+
+# Dribbling detection
+dribbling:
+  min_possession_frames: 5
+  speed_threshold: 1.0
+  max_height_variance: 50
+
+# Event recognition
+event_recognition:
+  pass_detection:
+    min_pass_distance: 2.0
+    min_pass_duration: 5
+  shot_detection:
+    max_shot_frames: 60
+    min_vertical_velocity: 2.0
+  rebound_detection:
+    proximity_threshold: 1.5
+
+# Shot analysis
+shot_attempt:
+  three_point_line_distance: 7.24
+  hoop_position: [14.0, 7.5]
+  
+# Ball control analysis  
+ball_control:
+  proximity_threshold: 3.0
+  min_control_frames: 3
+
+# Sequence recording
+sequence:
+  max_frames: 10000
+  fps: 30

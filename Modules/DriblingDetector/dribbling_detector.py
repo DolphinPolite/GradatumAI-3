@@ -28,7 +28,7 @@ class DribbleEvent:
         return f"Dribble(player={self.player_id}, ts={self.start_ts}-{self.end_ts}, dist={self.distance_traveled:.1f})"
 
 
-class DriblingDetector:
+class DribblingDetector:
     """Detects and tracks dribbling events."""
     
     def __init__(self):

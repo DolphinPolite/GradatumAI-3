@@ -1,6 +1,7 @@
 import os
 
 from matplotlib import pyplot as plt
+plt.switch_backend('Agg')  # Headless mode - GUI olmadan çalış
 
 from Modules.BallTracker.ball_detect_track import BallDetectTrack
 from Modules.IDrecognition.player import Player
@@ -45,6 +46,22 @@ if __name__ == '__main__':
     # COURT REAL SIZES
     # 28m horizontal lines
     # 15m vertical lines
+
+    # Check if required video files exist
+    video_files = [
+        'resources/VideoProject.mp4',
+        'resources/Short4Mosaicing.mp4'
+    ]
+    
+    missing_videos = [v for v in video_files if not os.path.exists(v)]
+    if missing_videos:
+        print(f"⚠️  Missing video files: {', '.join(missing_videos)}")
+        print("📝 Usage:")
+        print("   1. Place video files in resources/ directory")
+        print("   2. Or modify video paths in main.py")
+        print("   3. Create a sample video with: python scripts/create_dummy_jersey_model.py")
+        # Continue anyway for testing - comment out if you want to exit
+        print("\n⏸️  Skipping panorama creation - using existing resources if available...")
 
     # loading already computed panoramas
     if os.path.exists('resources/pano.png'):

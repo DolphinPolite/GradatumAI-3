@@ -160,9 +160,14 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 
-from tools.plot_tools import plt_plot
+try:
+    from tools.plot_tools import plt_plot
+except Exception:
+    def plt_plot(*args, **kwargs):
+        return None
 from scipy.optimize import linear_sum_assignment
 from .kalman import KalmanTracker
+from .player import Player
 import os
 
 # optional jersey recognizer
@@ -263,6 +268,7 @@ class FeetDetector:
         cfg_seg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
         cfg_seg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # set threshold for this model
         cfg_seg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
+        cfg_seg.MODEL.DEVICE = "cpu"  # Force CPU if CUDA not available
         self.predictor_seg = DefaultPredictor(cfg_seg)
         self.bbs = []
         self.players = players

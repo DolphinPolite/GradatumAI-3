@@ -3,7 +3,7 @@ DriblingDetector Module
 Detects and analyzes dribbling actions during the match.
 """
 
-from .dribbling_detector import DriblingDetector, DribbleEvent
+from .dribbling_detector import DribblingDetector, DribbleEvent
 from .config import (
     DRIBBLE_DISTANCE_TH,
     MIN_DRIBBLE_FRAMES,
@@ -14,7 +14,7 @@ from .config import (
 )
 
 __all__ = [
-    'DriblingDetector',
+    'DribblingDetector',
     'DribbleEvent',
     'DRIBBLE_DISTANCE_TH',
     'MIN_DRIBBLE_FRAMES',

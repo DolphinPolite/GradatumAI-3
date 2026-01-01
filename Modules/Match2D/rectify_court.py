@@ -1,7 +1,11 @@
 import cv2
 import numpy as np
 
-from tools.plot_tools import plt_plot
+try:
+    from tools.plot_tools import plt_plot
+except Exception:
+    def plt_plot(*args, **kwargs):
+        return None
 
 FLANN_INDEX_KDTREE = 1
 index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)

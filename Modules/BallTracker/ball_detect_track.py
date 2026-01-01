@@ -274,7 +274,11 @@ Ayrıca, iyileştirme yapmak adına neleri eklemek gerekir? Elimde sabit kamera 
 import os.path
 
 from ..IDrecognition.player_detection import *
-from tools.plot_tools import plt_plot
+try:
+    from tools.plot_tools import plt_plot
+except Exception:
+    def plt_plot(*args, **kwargs):
+        return None
 
 MAX_TRACK = 5
 IOU_BALL_PADDING = 30

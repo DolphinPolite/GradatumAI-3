@@ -1,4 +1,4 @@
-from player_detection import *
+from Modules.IDrecognition.player_detection import *
 import skvideo.io
 
 TOPCUT = 320
