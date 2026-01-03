@@ -1,0 +1,27 @@
+logging:
+  log_level: INFO
+  verbose: false
+modules:
+- enabled: true
+  name: id_recognition
+- enabled: true
+  name: player_position_tracking
+- enabled: true
+  name: ball_tracking
+- enabled: true
+  name: player_distance
+- enabled: true
+  name: speed_acceleration
+- enabled: true
+  name: movement_classifier
+- enabled: true
+  name: shot_attempt_detector
+- enabled: true
+  name: dribble_detector
+- enabled: true
+  name: sequence_parser
+- enabled: true
+  name: ball_control_duration
+pipeline:
+  name: Basketball Analytics Pipeline
+  version: 1.0.0
