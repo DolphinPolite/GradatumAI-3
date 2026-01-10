@@ -207,8 +207,8 @@ class BasketballPipeline:
         
         if module.name == "speed_acceleration":
             speeds = [f"P{pid}:{p.get('speed', 0):.1f}" for pid, p in data['players'].items()]
-            #return " | ".join(speeds[:4]) # İlk 4 oyuncunun hızını göster
-            return data.get('speed_debug', 'No debug info')
+            return " | ".join(speeds[:4]) # İlk 4 oyuncunun hızını göster
+            #return data.get('speed_debug', 'No debug info')
         
         summary_parts = []
         for key in outputs:
@@ -362,3 +362,4 @@ if __name__ == "__main__":
     validate_pipeline_config()
     
     print("\n✅ Pipeline orchestrator ready!")
+
