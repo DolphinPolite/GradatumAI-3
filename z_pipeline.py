@@ -187,6 +187,28 @@ class BasketballPipeline:
         
         if not outputs:
             return "no output"
+
+        if module.name == "movement_classifier":
+            states = []
+            for pid, pdata in data.get('players', {}).items():
+                s = pdata.get('movement_state', '?')
+                states.append(f"P{pid}:{s}")
+            return " | ".join(states[:5]) + ("..." if len(states)>5 else "")
+            
+        if module.name == "ball_tracking":
+            owner = data.get('ball', {}).get('owner_id')
+            detected = data.get('ball', {}).get('detected')
+            return f"Ball: {'✓' if detected else 'x'}, Owner: {owner if owner else 'None'}"
+        
+        if module.name == "player_distance":
+            matrix = data.get('distance_matrix', {})
+            total_pairs = sum(len(v) for v in matrix.values())
+            return f"matrix_pairs={total_pairs} (all-to-all)"
+        
+        if module.name == "speed_acceleration":
+            speeds = [f"P{pid}:{p.get('speed', 0):.1f}" for pid, p in data['players'].items()]
+            #return " | ".join(speeds[:4]) # İlk 4 oyuncunun hızını göster
+            return data.get('speed_debug', 'No debug info')
         
         summary_parts = []
         for key in outputs:
