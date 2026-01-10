@@ -6,7 +6,8 @@ Merkezi modül kayıt sistemi - TÜM modüller burada tanımlı
 from typing import Dict, Type, Any
 from dataclasses import dataclass
 import yaml
-
+import math
+import sys
 
 # =============================================================================
 # MODULE BASE CLASS
@@ -170,8 +171,9 @@ class BallTrackingModule(BaseModule):
             # Sync has_ball
             for player in self.ball_detector.players:
                 if player.ID in data['players']:
-                    data['players'][player.ID]['has_ball'] = player.has_ball
-                    if player.has_ball:
+                    # has_ball bilgisini mutlaka data['players'] içine yaz
+                    data['players'][player.ID]['has_ball'] = getattr(player, 'has_ball', False)
+                    if data['players'][player.ID]['has_ball']:
                         data['ball']['owner_id'] = player.ID
             
             self.success_count += 1
@@ -197,34 +199,57 @@ class PlayerDistanceModule(BaseModule):
         return ['players', 'timestamp']
     
     def get_outputs(self) -> list[str]:
-        return ['players']  # Adds proximity info
+        return ['players', 'distance_matrix']  # Adds proximity info
     
     def process(self, data: Dict) -> Dict:
         self.execution_count += 1
+        players = data.get('players', {})
+        pids = list(players.keys())
+        
+        # 1. Mesafe Matrisi Oluştur
+        dist_matrix = {}
         
         try:
-            for pid, pdata in data['players'].items():
-                player_obj = self._find_player(pid)
-                if not player_obj:
-                    continue
+            for i in range(len(pids)):
+                id1 = pids[i]
+                pos1 = players[id1].get('position_2d')
                 
-                prox = self.distance_analyzer.get_proximity_info(
-                    player_obj, self.player_list, data['timestamp']
-                )
+                if id1 not in dist_matrix:
+                    dist_matrix[id1] = {}
                 
-                if prox:
-                    pdata['closest_teammate'] = prox.closest_teammate
-                    pdata['closest_opponent'] = prox.closest_opponent
-                    pdata['teammates_within_3m'] = prox.teammates_within_3m
+                for j in range(len(pids)):
+                    id2 = pids[j]
+                    if id1 == id2:
+                        dist_matrix[id1][id2] = 0.0
+                        continue
+                        
+                    pos2 = players[id2].get('position_2d')
+                    
+                    if pos1 and pos2:
+                        # Öklid Mesafesi: sqrt((x2-x1)^2 + (y2-y1)^2)
+                        dist = math.sqrt((pos2[0]-pos1[0])**2 + (pos2[1]-pos1[1])**2)
+                        dist_matrix[id1][id2] = round(dist, 2)
             
+            # 2. Veriyi 'data' içine enjekte et
+            data['distance_matrix'] = dist_matrix
+            
+            # 3. Opsiyonel: Her oyuncunun içine 'closest_opponent' bilgisini hala yazalım
+            # (Dribble detector gibi modüller buna ihtiyaç duyabilir)
+            for pid in pids:
+                distances = dist_matrix[pid]
+                # Kendisi hariç en küçük mesafeyi bul
+                other_distances = {k: v for k, v in distances.items() if k != pid}
+                if other_distances:
+                    closest_id = min(other_distances, key=other_distances.get)
+                    players[pid]['closest_player_id'] = closest_id
+                    players[pid]['min_distance'] = other_distances[closest_id]
+
             self.success_count += 1
+            
         except Exception as e:
             self.failure_count += 1
-            data.setdefault('warnings', []).append({
-                'module': self.name,
-                'message': str(e)
-            })
-        
+            data.setdefault('warnings', []).append({'module': self.name, 'message': str(e)})
+            
         return data
     
     def _find_player(self, pid):
@@ -250,26 +275,47 @@ class SpeedAccelerationModule(BaseModule):
     
     def process(self, data: Dict) -> Dict:
         self.execution_count += 1
+        players_data = data.get('players', {})
+        ts = data.get('timestamp')
         
+        if not players_data:
+            data['speed_debug'] = "OYUNCU BULUNAMADI"
+            return data
+
         try:
-            for pid, pdata in data['players'].items():
+            # Sadece tek oyuncu değil, data içindeki TÜM oyuncuları dönüyoruz
+            for pid, pdata in players_data.items():
                 player_obj = self._find_player(pid)
-                if not player_obj:
-                    continue
+
+                pdata['speed'] = 0.0
+                pdata['acceleration'] = 0.0
                 
-                pdata['speed'] = self.velocity_analyzer.calculate_speed(
-                    player_obj, data['timestamp']
-                )
-                pdata['acceleration'] = self.velocity_analyzer.calculate_acceleration(
-                    player_obj, data['timestamp']
-                )
+                print(f"DEBUG: Player {pid} positions history: {player_obj.positions[-2:]}")
+
+                if player_obj:
+                    pos_count = len(getattr(player_obj, 'positions', []))
+                    sys.debug_notes.append(f"P{pid}:{pos_count}pos")
+
+                    speed = self.velocity_analyzer.calculate_speed(player_obj, ts)
+                    accel = self.velocity_analyzer.calculate_acceleration(player_obj, ts)
+                    
+                    if speed is not None:
+                        pdata['speed'] = round(float(speed), 2)
+                    if accel is not None:
+                        pdata['acceleration'] = round(float(accel), 2)
+
+                    data['speed_debug'] = " | ".join(sys.debug_notes)
+
+            
+            print(f"\n>>> DEBUG HIZ: {data['speed_debug']}", file=sys.stderr)
+            sys.stderr.flush()
             
             self.success_count += 1
         except Exception as e:
             self.failure_count += 1
             data.setdefault('warnings', []).append({
-                'module': self.name,
-                'message': str(e)
+                'module': self.name, 
+                'message': f"Hız hesaplama hatası: {str(e)}"
             })
         
         return data
@@ -302,17 +348,28 @@ class MovementClassifierModule(BaseModule):
         self.execution_count += 1
         
         try:
-            for pid, pdata in data['players'].items():
+            for pid, pdata in data.get('players', {}).items():
                 speed = pdata.get('speed', 0.0)
-                
-                if speed < 1.0:
-                    pdata['movement_state'] = "idle"
-                elif speed < 3.0:
-                    pdata['movement_state'] = "walking"
-                elif speed < 6.0:
-                    pdata['movement_state'] = "running"
+    
+                if speed > 6.0:
+                    state = "sprinting"
+                elif speed > 3.0:
+                    state = "running"
+                elif speed > 0.5:
+                    state = "walking"
                 else:
-                    pdata['movement_state'] = "sprinting"
+                    state = "idle"
+                    
+                pdata['movement_state'] = state
+                
+                # 2. History Güncelle (Pattern için)
+                if pid not in self.history: self.history[pid] = []
+                self.history[pid].append(state)
+                if len(self.history[pid]) > 10: self.history[pid].pop(0)
+                
+                # 3. Pattern Analizi (Örn: Hızlı duruş, ivmelenme)
+                pdata['movement_state'] = state
+                pdata['history_summary'] = self.history[pid]
             
             self.success_count += 1
         except Exception as e:
