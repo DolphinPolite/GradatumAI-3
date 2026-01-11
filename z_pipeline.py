@@ -184,6 +184,7 @@ class BasketballPipeline:
     def _summarize_module_output(self, module: BaseModule, data: Dict) -> str:
         """Generate output summary for verbose logging"""
         outputs = module.get_outputs()
+        summary_parts = []
         
         if not outputs:
             return "no output"
@@ -207,10 +208,55 @@ class BasketballPipeline:
         
         if module.name == "speed_acceleration":
             speeds = [f"P{pid}:{p.get('speed', 0):.1f}" for pid, p in data['players'].items()]
-            return " | ".join(speeds[:4]) # İlk 4 oyuncunun hızını göster
+            return " | ".join(speeds) # İlk 4 oyuncunun hızını göster
             #return data.get('speed_debug', 'No debug info')
+
+        if module.name == "sequence_parser":
+            return data['sequence_output']
         
-        summary_parts = []
+        if module.name == "shot_attempt_detector":
+            events = data.get('events', [])
+            shot_events = [e for e in events if e.get('type') == 'shot']
+            
+            if not shot_events:
+                return "no shots"
+            
+            # Format: "2 shots: P3(jump,0.85), P1(sprint,0.65)"
+            shots_summary = []
+            for event in shot_events:
+                pid = event.get('player_id')
+                details = event.get('details', {})
+                state = details.get('movement_state', '?')
+                conf = details.get('confidence', 0)
+                shots_summary.append(f"P{pid}({state},{conf:.2f})")
+            
+            count = len(shot_events)
+            return f"{count} shot{'s' if count > 1 else ''}: {', '.join(shots_summary)}"
+        
+        if module.name == "dribble_detector":
+            events = data.get('events', [])
+            dribble_events = [e for e in events if 'dribble' in e.get('type', '')]
+            
+            if not dribble_events:
+                return "no dribbles"
+            
+            # Format: "P3: speed_dribble (45f)"
+            summaries = []
+            for event in dribble_events:
+                etype = event.get('type')
+                pid = event.get('player_id')
+                details = event.get('details', {})
+                
+                if etype == 'dribble_start':
+                    dtype = details.get('dribble_type', '?')
+                    summaries.append(f"P{pid} started {dtype}")
+                elif etype == 'dribble_end':
+                    duration = details.get('duration_frames', 0)
+                    summaries.append(f"P{pid} ended ({duration}f)")
+            
+            return " | ".join(summaries) if summaries else "ongoing"
+        
+        
         for key in outputs:
             if key in data:
                 value = data[key]
@@ -362,4 +408,3 @@ if __name__ == "__main__":
     validate_pipeline_config()
     
     print("\n✅ Pipeline orchestrator ready!")
-
