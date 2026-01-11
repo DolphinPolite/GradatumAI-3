@@ -168,12 +168,17 @@ class BallTrackingModule(BaseModule):
                 'owner_id': None
             }
             
-            # Sync has_ball
+            # ÖNCE HERKESIN has_ball'ını False yap
+            for pid in data['players']:
+                data['players'][pid]['has_ball'] = False
+            
+            # SONRA gerçek sahipleri işaretle
             for player in self.ball_detector.players:
                 if player.ID in data['players']:
-                    # has_ball bilgisini mutlaka data['players'] içine yaz
-                    data['players'][player.ID]['has_ball'] = getattr(player, 'has_ball', False)
-                    if data['players'][player.ID]['has_ball']:
+                    has_ball_value = getattr(player, 'has_ball', False)
+                    data['players'][player.ID]['has_ball'] = has_ball_value
+                    
+                    if has_ball_value:
                         data['ball']['owner_id'] = player.ID
             
             self.success_count += 1
@@ -266,6 +271,7 @@ class SpeedAccelerationModule(BaseModule):
         super().__init__("speed_acceleration", **kwargs)
         self.velocity_analyzer = kwargs.get('velocity_analyzer')
         self.player_list = kwargs.get('player_list')
+        self.previous_states = {}
     
     def get_requirements(self) -> list[str]:
         return ['players', 'timestamp']
@@ -276,46 +282,70 @@ class SpeedAccelerationModule(BaseModule):
     def process(self, data: Dict) -> Dict:
         self.execution_count += 1
         players_data = data.get('players', {})
-        ts = data.get('timestamp')
+        current_time = data.get('timestamp')
         
-        if not players_data:
-            data['speed_debug'] = "OYUNCU BULUNAMADI"
+        # Eğer timestamp yoksa işlem yapamayız
+        if current_time is None:
             return data
 
         try:
-            # Sadece tek oyuncu değil, data içindeki TÜM oyuncuları dönüyoruz
             for pid, pdata in players_data.items():
-                player_obj = self._find_player(pid)
-
+                # Varsayılan değerler
                 pdata['speed'] = 0.0
                 pdata['acceleration'] = 0.0
                 
-                print(f"DEBUG: Player {pid} positions history: {player_obj.positions[-2:]}")
-
-                if player_obj:
-                    pos_count = len(getattr(player_obj, 'positions', []))
-                    sys.debug_notes.append(f"P{pid}:{pos_count}pos")
-
-                    speed = self.velocity_analyzer.calculate_speed(player_obj, ts)
-                    accel = self.velocity_analyzer.calculate_acceleration(player_obj, ts)
+                current_pos = pdata.get('position_2d')
+                
+                # Geçmiş verisi var mı kontrol et
+                if pid in self.previous_states:
+                    prev_state = self.previous_states[pid]
+                    prev_pos = prev_state['pos']
+                    prev_time = prev_state['time']
+                    prev_speed = prev_state['speed']
                     
-                    if speed is not None:
-                        pdata['speed'] = round(float(speed), 2)
-                    if accel is not None:
-                        pdata['acceleration'] = round(float(accel), 2)
+                    time_diff = current_time - prev_time
+                    
+                    # Zaman farkı 0 veya çok küçükse (ör: aynı kare) hesaplama yapma
+                    if time_diff > 0.001 and current_pos and prev_pos:
+                        # 1. Hız Hesapla (Distance / Time)
+                        # Pixel cinsinden mesafe (gerçek dünya için ölçek katsayısı eklenebilir)
+                        dist = math.sqrt((current_pos[0] - prev_pos[0])**2 + (current_pos[1] - prev_pos[1])**2)
+                        current_speed = dist / time_diff
+                        
+                        # 2. İvme Hesapla ((V_son - V_ilk) / Time)
+                        acceleration = (current_speed - prev_speed) / time_diff
+                        
+                        # Veriye yaz (Basit filtreleme: çok uçuk değerleri silebilirsiniz)
+                        pdata['speed'] = round(current_speed, 2)
+                        pdata['acceleration'] = round(acceleration, 2)
+                        
+                        # State güncelle (Bir sonraki karede kullanmak için ivme hesabında hıza ihtiyaç var)
+                        self.previous_states[pid] = {
+                            'pos': current_pos,
+                            'time': current_time,
+                            'speed': current_speed
+                        }
+                    else:
+                        # Zaman farkı yoksa sadece pozisyonu güncelle
+                        self.previous_states[pid]['pos'] = current_pos
+                        self.previous_states[pid]['time'] = current_time
+                        
+                else:
+                    # İlk kez görülen oyuncu için kayıt oluştur
+                    if current_pos:
+                        self.previous_states[pid] = {
+                            'pos': current_pos,
+                            'time': current_time,
+                            'speed': 0.0
+                        }
 
-                    data['speed_debug'] = " | ".join(sys.debug_notes)
-
-            
-            print(f"\n>>> DEBUG HIZ: {data['speed_debug']}", file=sys.stderr)
-            sys.stderr.flush()
-            
             self.success_count += 1
+            
         except Exception as e:
             self.failure_count += 1
             data.setdefault('warnings', []).append({
                 'module': self.name, 
-                'message': f"Hız hesaplama hatası: {str(e)}"
+                'message': f"Speed calc error: {str(e)}"
             })
         
         return data
@@ -332,12 +362,15 @@ class MovementClassifierModule(BaseModule):
     
     def __init__(self, **kwargs):
         super().__init__("movement_classifier", **kwargs)
+        self.history = {}
+        self.last_states = {}
     
     def get_requirements(self) -> list[str]:
         return ['players']
     
     def get_outputs(self) -> list[str]:
-        return ['players']  # Adds movement_state
+        # Artık 'events' listesine de katkıda bulunuyor
+        return ['players', 'events']  # Adds movement_state
     
     def validate_input(self, data: Dict) -> tuple[bool, str]:
         if not any('speed' in p for p in data.get('players', {}).values()):
@@ -347,38 +380,65 @@ class MovementClassifierModule(BaseModule):
     def process(self, data: Dict) -> Dict:
         self.execution_count += 1
         
-        try:
-            for pid, pdata in data.get('players', {}).items():
+        # Events listesini döngüden ÖNCE oluşturuyoruz
+        data.setdefault('events', [])
+        
+        players = data.get('players', {})
+        if not players:
+            return data
+
+        # DÖNGÜ BAŞLANGICI
+        for pid, pdata in players.items():
+            try:
+                # --- 1. State Belirleme ---
                 speed = pdata.get('speed', 0.0)
+                accel = pdata.get('acceleration', 0.0)
     
-                if speed > 6.0:
+                if abs(accel) > 500.0 and 30.0 < speed < 100.0:
+                    state = "jumping"
+                elif speed > 150.0:
                     state = "sprinting"
-                elif speed > 3.0:
+                elif speed > 60.0:
                     state = "running"
-                elif speed > 0.5:
+                elif speed > 10.0:
                     state = "walking"
                 else:
                     state = "idle"
                     
                 pdata['movement_state'] = state
                 
-                # 2. History Güncelle (Pattern için)
+                # --- 2. Event Üretme (State Change) ---
+                prev_state = self.last_states.get(pid)
+                
+                if prev_state and prev_state != state:
+                    event = {
+                        'type': 'movement_change',
+                        'player_id': pid,
+                        'frame_id': data.get('frame_id', 0),
+                        'details': {
+                            'from': prev_state,
+                            'to': state,
+                            'speed': speed
+                        }
+                    }
+                    data['events'].append(event)
+                
+                # --- 3. Geçmişi Kaydetme ---
+                self.last_states[pid] = state
+                
                 if pid not in self.history: self.history[pid] = []
                 self.history[pid].append(state)
                 if len(self.history[pid]) > 10: self.history[pid].pop(0)
                 
-                # 3. Pattern Analizi (Örn: Hızlı duruş, ivmelenme)
-                pdata['movement_state'] = state
                 pdata['history_summary'] = self.history[pid]
-            
-            self.success_count += 1
-        except Exception as e:
-            self.failure_count += 1
-            data.setdefault('warnings', []).append({
-                'module': self.name,
-                'message': str(e)
-            })
+            except Exception as e:
+                self.failure_count += 1
+                data.setdefault('warnings', []).append({
+                    'module': self.name,
+                    'message': str(e)
+                })
         
+        self.success_count += 1
         return data
 
 
@@ -432,46 +492,171 @@ class ShotAttemptDetectorModule(BaseModule):
             })
         
         return data
-
-
 class DribbleDetectorModule(BaseModule):
-    """8. Dribbling Detector"""
+    """8. Dribbling Detector - Fixed Version"""
     
     def __init__(self, **kwargs):
         super().__init__("dribble_detector", **kwargs)
         self.detector = None
+        self.last_frame_id = -1
     
     def get_requirements(self) -> list[str]:
-        return ['players', 'ball', 'timestamp']
+        return ['players', 'ball', 'timestamp', 'frame_id']
     
     def get_outputs(self) -> list[str]:
         return ['events']
     
     def validate_input(self, data: Dict) -> tuple[bool, str]:
-        if not any(p.get('has_ball') for p in data.get('players', {}).values()):
-            return False, "No player has ball"
+        """
+        Validation: We need players and ball data.
+        Ball doesn't need to have an owner - we detect when ownership exists.
+        """
+        if 'players' not in data or len(data['players']) == 0:
+            return False, "No players detected"
+        
+        if 'ball' not in data:
+            return False, "No ball data"
+        
+        # Don't require has_ball - we'll check each player
         return True, ""
     
     def process(self, data: Dict) -> Dict:
+        """
+        Process frame for dribble detection.
+        
+        Creates FramePacket for each player with ball and feeds to detector.
+        Emits dribble_start and dribble_end events.
+        """
         self.execution_count += 1
         
         try:
+            # Lazy initialization
             if self.detector is None:
                 from Modules.DriblingDetector.dribbling_detector import DribblingDetector
                 self.detector = DribblingDetector(preset_name="default")
             
+            # Ensure events list exists
             data.setdefault('events', [])
-            # Dribble detection logic here
+            
+            frame_id = data.get('frame_id', 0)
+            timestamp = data.get('timestamp', 0.0)
+            players = data.get('players', {})
+            ball_data = data.get('ball', {})
+            
+            # Process each player who has the ball
+            for pid, pdata in players.items():
+                has_ball = pdata.get('has_ball', False)
+                
+                if not has_ball:
+                    continue
+                
+                # Build FramePacket
+                packet = self._build_frame_packet(
+                    player_id=pid,
+                    player_data=pdata,
+                    ball_data=ball_data,
+                    frame_id=frame_id,
+                    timestamp=timestamp
+                )
+                
+                # Process with detector
+                dribble_events = self.detector.process_frame(packet)
+                
+                # Convert DribbleEvent objects to pipeline events
+                for dribble_event in dribble_events:
+                    self._add_dribble_events(data, dribble_event, pdata)
             
             self.success_count += 1
+            
         except Exception as e:
             self.failure_count += 1
+            import traceback
             data.setdefault('warnings', []).append({
                 'module': self.name,
-                'message': str(e)
+                'message': f"{str(e)} | {traceback.format_exc()}"
             })
         
         return data
+    
+    def _build_frame_packet(self, player_id: int, player_data: dict, 
+                           ball_data: dict, frame_id: int, timestamp: float):
+        """
+        Build FramePacket from pipeline data.
+        
+        FramePacket requires:
+        - frame_id
+        - timestamp
+        - player_id
+        - player_pos (x, y)
+        - ball_pos (x, y)
+        - has_ball (bool)
+        - distance_matrix (optional)
+        """
+        from Modules.DriblingDetector.utils import FramePacket
+        
+        player_pos = player_data.get('position_2d', (0, 0))
+        ball_pos = ball_data.get('position', player_pos)  # Default to player pos if no ball pos
+        
+        # Get closest opponent distance if available
+        closest_opponent_dist = player_data.get('min_distance', 999.0)
+        
+        packet = FramePacket(
+            frame_id=frame_id,
+            timestamp=timestamp,
+            player_id=player_id,
+            player_pos=player_pos,
+            ball_pos=ball_pos,
+            has_ball=True,  # We only create packets for ball carriers
+            closest_opponent_distance=closest_opponent_dist
+        )
+        
+        return packet
+    
+    def _add_dribble_events(self, data: dict, dribble_event, player_data: dict):
+        """
+        Convert DribbleEvent to pipeline events.
+        
+        Creates two events:
+        1. dribble_start - when dribble sequence begins
+        2. dribble_end - when dribble sequence completes
+        """
+        # Determine dribble type based on player movement
+        movement_state = player_data.get('movement_state', 'unknown')
+        speed = player_data.get('speed', 0.0)
+        
+        if speed > 150.0 or movement_state == 'sprinting':
+            dribble_type = 'speed_dribble'
+        elif speed > 60.0 or movement_state == 'running':
+            dribble_type = 'control_dribble'
+        else:
+            dribble_type = 'stationary_dribble'
+        
+        # START event
+        data['events'].append({
+            'type': 'dribble_start',
+            'player_id': dribble_event.player_id,
+            'frame_id': dribble_event.start_frame,
+            'details': {
+                'dribble_type': dribble_type,
+                'confidence': dribble_event.confidence,
+                'reasoning': dribble_event.reasoning
+            }
+        })
+        
+        # END event
+        duration_frames = dribble_event.end_frame - dribble_event.start_frame
+        
+        data['events'].append({
+            'type': 'dribble_end',
+            'player_id': dribble_event.player_id,
+            'frame_id': dribble_event.end_frame,
+            'details': {
+                'duration_frames': duration_frames,
+                'bounce_count': dribble_event.bounce_count,
+                'avg_interval': dribble_event.avg_interval_frames,
+                'confidence': dribble_event.confidence
+            }
+        })
 
 
 class SequenceParserModule(BaseModule):
@@ -485,29 +670,57 @@ class SequenceParserModule(BaseModule):
         return ['events']
     
     def get_outputs(self) -> list[str]:
-        return ['events']  # Adds sequence events
+        return ['events', 'sequence_output']  # sequence_output artık garanti
     
     def validate_input(self, data: Dict) -> tuple[bool, str]:
-        if not data.get('events'):
-            return False, "No events to parse"
+        # Events listesi yoksa bile çalışsın (boş sequence üretelim)
         return True, ""
     
     def process(self, data: Dict) -> Dict:
         self.execution_count += 1
+        events = data.get('events', [])
         
         try:
-            if self.parser is None:
-                from Modules.SequenceParser.parser import SequenceParser
-                self.parser = SequenceParser()
+            # ✅ sequence_output'u MUTLAKA oluştur (boş bile olsa)
+            current_sequence_summary = []
             
-            # Parse sequences
+            # Eğer hiç olay yoksa boş string dön
+            if not events:
+                data['sequence_output'] = ""
+                self.success_count += 1
+                return data
+
+            # Olayları işle
+            for event in events:
+                etype = event.get('type')
+                pid = event.get('player_id')
+                
+                if etype == 'movement_change':
+                    details = event.get('details', {})
+                    msg = f"P{pid} {details.get('from')}->{details.get('to')}"
+                    current_sequence_summary.append(msg)
+                    
+                elif etype == 'shot':
+                    msg = f"!!! SHOT ATTEMPT by P{pid} !!!"
+                    current_sequence_summary.append(msg)
+                    
+                elif etype == 'dribble':
+                    msg = f"P{pid} is dribbling"
+                    current_sequence_summary.append(msg)
+
+            # ✅ Her durumda sequence_output oluştur
+            data['sequence_output'] = " | ".join(current_sequence_summary) if current_sequence_summary else "No events"
+            
             self.success_count += 1
+            
         except Exception as e:
             self.failure_count += 1
             data.setdefault('warnings', []).append({
                 'module': self.name,
                 'message': str(e)
             })
+            # ✅ Hata durumunda bile sequence_output ekle
+            data['sequence_output'] = f"ERROR: {str(e)}"
         
         return data
 
